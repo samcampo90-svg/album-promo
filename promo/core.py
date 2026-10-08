@@ -260,6 +260,29 @@ def palette(img, k=6):
             "all": [cols[i] for i in order]}
 
 
+LABEL = {  # the label's brand colors (solo-label-engine assets/brand.py), as BGR
+    "gold": (55, 175, 212), "red": (0, 0, 176), "crimson": (0, 0, 139), "olive": (47, 107, 85),
+    "silver": (192, 192, 192), "white": (245, 245, 245), "black": (9, 10, 12), "charcoal": (26, 26, 26),
+}
+LABEL_PALETTES = {  # (bg, primary, secondary, accent, highlight)
+    "obsidian_gold": ("black", "gold", "crimson", "olive", "white"),
+    "blood_gold": ("black", "red", "gold", "crimson", "silver"),
+    "silver_rite": ("charcoal", "silver", "gold", "white", "crimson"),
+    "olive_reliquary": ("black", "olive", "gold", "silver", "white"),
+    "ash_crimson": ("charcoal", "crimson", "silver", "gold", "white"),
+}
+
+
+def label_palette(name):
+    """A label sub-palette in the same shape as palette(). The bright role drives
+    bars/rings/accent text; the background blur is desaturated so the brand
+    colors carry the frame."""
+    bg, pri, sec, acc, hi = (LABEL[c] for c in LABEL_PALETTES.get(name, LABEL_PALETTES["obsidian_gold"]))
+    bright = max((pri, sec), key=lambda c: sum(c))
+    return {"dominant": pri, "accent": pri, "vivid": bright, "dark": bg, "light": hi, "secondary": sec,
+            "all": [pri, sec, acc, hi], "bg_sat": 0.25, "bg_dim": 0.8, "name": name}
+
+
 # ---------------------------------------------------------------- text
 @lru_cache(maxsize=256)
 def font(name, size):

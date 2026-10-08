@@ -79,7 +79,7 @@ def overlays(job):
 
 
 def _bg(job, dim=0.5):
-    return C.blurred_bg(job.cover, dim=dim)
+    return C.blurred_bg(job.cover, dim=dim * job.pal.get("bg_dim", 1.0), sat=job.pal.get("bg_sat", 1.15))
 
 
 # ---------------------------------------------------------------- 1. vinyl
@@ -382,7 +382,7 @@ def countdown(job, f):
     days = job.style.get("days", 7)
     when = job.style.get("when", "")
     num = C.text_layer(str(days), head, 900, 520, 460, 120, color=(255, 255, 255), shadow=20)
-    unit = C.text_layer("DAY" if days == 1 else "DAYS", head, 900, 140, 120, 40, color=job.pal["vivid"], shadow=10, upper=True)
+    unit = C.text_layer(job.style.get("unit") or ("DAY" if days == 1 else "DAYS"), head, 900, 140, 120, 40, color=job.pal["vivid"], shadow=10, upper=True)
     sub = C.text_layer(when, "Inter_800ExtraBold.ttf", SAFE_W, 120, 54, 28, color=(255, 255, 255), shadow=10) if when else None
     S = 300
     cov = C.with_shadow(C.bgr_to_rgba(C.cover_fit(job.cover, S, S), C.rounded_mask(S, 18)), 30, (0, 16), 0.6)

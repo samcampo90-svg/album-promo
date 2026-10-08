@@ -2,6 +2,7 @@
 import cv2
 import numpy as np
 
+from . import banks
 from . import core as C
 
 
@@ -10,7 +11,7 @@ def _base(cover, w, h, dim=0.45):
     return big[:h, :w].copy()
 
 
-def countdown_card(cover, pal, days, album, artist, date_str, font_set="condensed", w=1080, h=1920):
+def countdown_card(cover, pal, days, album, artist, date_str, font_set="condensed", w=1080, h=1920, lang="en"):
     head, body, upper = C.FONT_SETS[font_set]
     img = _base(cover, w, h)
     S = 560
@@ -18,7 +19,8 @@ def countdown_card(cover, pal, days, album, artist, date_str, font_set="condense
     C.paste(img, cov, (w - cov.shape[1]) // 2, 300)
     num = C.text_layer(str(days), head, 900, 420, 380, 100, color=(255, 255, 255), shadow=16)
     C.paste(img, num, (w - num.shape[1]) // 2, 940)
-    u = C.text_layer(("DAY" if days == 1 else "DAYS") + f" UNTIL {album}", head, 900, 200, 80, 34,
+    words = banks.CARD[lang]
+    u = C.text_layer((words["day"] if days == 1 else words["days"]) + " " + words["until"].format(album=album), head, 900, 200, 80, 34,
                      color=pal["vivid"], shadow=8, upper=True)
     C.paste(img, u, (w - u.shape[1]) // 2, 1340)
     s = C.text_layer(f"{artist}  ·  {date_str}", "Inter_600SemiBold.ttf", 900, 80, 42, 26, shadow=8)
@@ -26,13 +28,13 @@ def countdown_card(cover, pal, days, album, artist, date_str, font_set="condense
     return img
 
 
-def outnow_card(cover, pal, album, artist, font_set="condensed", w=1080, h=1920):
+def outnow_card(cover, pal, album, artist, font_set="condensed", w=1080, h=1920, lang="en"):
     head, body, upper = C.FONT_SETS[font_set]
     img = _base(cover, w, h)
     S = 860
     cov = C.with_shadow(C.bgr_to_rgba(C.cover_fit(cover, S, S), C.rounded_mask(S, 24)), 50, (0, 28), 0.6)
     C.paste(img, cov, (w - cov.shape[1]) // 2, 330)
-    t = C.text_layer("OUT NOW", head, 900, 200, 150, 60, color=(255, 255, 255), shadow=14, upper=True)
+    t = C.text_layer(banks.CARD[lang]["outnow"], head, 900, 200, 150, 60, color=(255, 255, 255), shadow=14, upper=True)
     C.paste(img, t, (w - t.shape[1]) // 2, 1270)
     s = C.text_layer(f"{album}  ·  {artist}", "Inter_600SemiBold.ttf", 900, 120, 46, 26, color=pal["vivid"] if np.mean(pal["vivid"]) > 90 else (255, 255, 255), shadow=8)
     C.paste(img, s, (w - s.shape[1]) // 2, 1460)

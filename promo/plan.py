@@ -9,7 +9,9 @@ from collections import Counter, defaultdict
 from . import banks
 
 PH = re.compile(r"{(\w+)}")
-REQUIRES = {"independent artist": "independent", "no label": "independent", "almost didn't release": "almost_didnt"}
+REQUIRES = {"independent artist": "independent", "no label": "independent", "almost didn't release": "almost_didnt",
+            "sin disquera": "independent", "casi no saco": "almost_didnt"}
+LABEL_PALETTES = ["obsidian_gold", "blood_gold", "silver_rite", "olive_reliquary", "ash_crimson"]
 TEMPLATE_W = {"vinyl": 1.0, "bars": 1.0, "ring": 0.9, "pulse": 1.0, "lyric": 1.6, "photo_beats": 1.2,
               "clip_cut": 1.8, "waveform": 0.9, "text_story": 0.8}
 HOOK_STYLE_W = {"line_boxes": 0.35, "box_black": 0.2, "stroke": 0.2, "shadow": 0.15, "accent": 0.1}
@@ -62,6 +64,16 @@ def build_plan(cfg, analyses, materials, perf=None, start=None, end=None, seed=7
     focus = [t["title"] for t in tracks if t.get("focus")] or [tracks[0]["title"]]
     facts = cfg.get("facts", {})
     sims = cfg.get("similar_artists", [])
+    langs = cfg.get("languages") or {"en": 1.0}
+    palette_mix = float(cfg.get("palette_mix", 0.0))          # share of videos in the label palette
+    label_pals = cfg.get("label_palettes") or LABEL_PALETTES
+
+    def loc(d, k, lang):
+        """language-specific value: key_<lang>, falling back to the bare key only for English"""
+        v = d.get(f"{k}_{lang}")
+        if v in (None, "", []) and lang == "en":
+            v = d.get(k)
+        return v
 
     used_keys = set()
     hook_last = {}                      # hook text -> last day index used
@@ -81,22 +93,22 @@ def build_plan(cfg, analyses, materials, perf=None, start=None, end=None, seed=7
             w.append(base)
         return w
 
-    def ctx_for(t, day, phase, moment=None):
-        a = analyses[t["title"]]
+    def ctx_for(t, day, phase, moment=None, lang="en"):
         lyr = materials.get("lyrics", {}).get(t["title"], {})
         short_lines = [l for l in lyr.get("lines", []) if 12 <= len(l) <= 60]
         days_left = (release - day).days
+        day_name, date, _ = banks.date_words(release, days_left, lang)
+        acts = loc(cfg, "activities", lang)
         return {
             "artist": cfg.get("artist"), "album": cfg.get("album"), "song": t["title"],
             "sim1": sims[0] if sims else None, "sim2": sims[1] if len(sims) > 1 else None,
-            "vibe": cfg.get("vibe"), "activity": rng.choice(cfg["activities"]) if cfg.get("activities") else None,
-            "made_where": facts.get("made_where"), "months": facts.get("months"),
+            "vibe": loc(cfg, "vibe", lang), "activity": rng.choice(acts) if acts else None,
+            "made_where": loc(facts, "made_where", lang), "months": facts.get("months"),
             "independent": facts.get("independent"), "almost_didnt": t.get("almost_didnt"),
-            "about": t.get("about"), "for_anyone_who": t.get("for_anyone_who"),
+            "about": loc(t, "about", lang), "for_anyone_who": loc(t, "for_anyone_who", lang),
             "lyric": rng.choice(short_lines) if short_lines else None,
             "days": days_left if days_left > 0 else None,
-            "day_name": (release.strftime("%A") if 0 < days_left <= 6 else release.strftime("%b %-d")),
-            "date": release.strftime("%b %-d"), "n_tracks": len(tracks),
+            "day_name": day_name, "date": date, "n_tracks": len(tracks),
             "track_no": tracks.index(t) + 1, "post_day": max(1, (day - release).days + 1),
             "ts": fmt_ts(moment["start"]) if moment else None, "link": cfg.get("link"),
         }
@@ -127,10 +139,10 @@ def build_plan(cfg, analyses, materials, perf=None, start=None, end=None, seed=7
             out[k] = w * perf.get("template", {}).get(k, 1.0)
         return out
 
-    def pick_hook(t, day_i, day, phase, moment, template):
-        ctx = ctx_for(t, day, phase, moment)
+    def pick_hook(t, day_i, day, phase, moment, template, lang):
+        ctx = ctx_for(t, day, phase, moment, lang)
         cands = []
-        for ph, kind, text in banks.HOOKS:
+        for ph, kind, text in banks.HOOKS[lang]:
             if ph not in ("any", phase):
                 continue
             if kind == "drop" and moment["kind"] != "drop":
@@ -156,10 +168,10 @@ def build_plan(cfg, analyses, materials, perf=None, start=None, end=None, seed=7
         hook_last[f] = day_i
         return f, kind
 
-    def story_lines(t, day, phase):
-        ctx = ctx_for(t, day, phase)
+    def story_lines(t, day, phase, lang):
+        ctx = ctx_for(t, day, phase, lang=lang)
         opts = []
-        for ph, seq in banks.STORIES:
+        for ph, seq in banks.STORIES[lang]:
             if ph not in ("any", phase):
                 continue
             filled = [fill(s, ctx) for s in seq]
@@ -167,23 +179,29 @@ def build_plan(cfg, analyses, materials, perf=None, start=None, end=None, seed=7
                 opts.append(filled)
         return rng.choice(opts) if opts else None
 
-    def caption(platform, t, day, phase, hook_kind):
-        ctx = ctx_for(t, day, phase)
-        lines = [l for l in (fill(x, ctx) for x in banks.CAPTION_LINES[phase]) if l]
+    def caption(platform, t, day, phase, hook_kind, lang):
+        ctx = ctx_for(t, day, phase, lang=lang)
+        lines = [l for l in (fill(x, ctx) for x in banks.CAPTION_LINES[lang][phase]) if l]
         line = rng.choice(lines) if lines else t["title"]
-        ask = rng.choice(banks.ASK_LINES) if hook_kind != "ask" else ""
-        tags = cfg.get("hashtags", [])[:3] + ([re.sub(r"\W", "", cfg["album"]).lower()] if cfg.get("album") else [])
+        ask = rng.choice(banks.ASK_LINES[lang]) if hook_kind != "ask" else ""
+        tags = list(loc(cfg, "hashtags", lang) or cfg.get("hashtags", []))[:3]
+        if cfg.get("album"):
+            tags.append(re.sub(r"\W", "", cfg["album"]).lower())
         tagstr = " ".join("#" + x.lstrip("#") for x in tags[:4])
-        cta = fill(banks.CTA[phase][platform], ctx) or banks.CTA[phase][platform].split(":")[0]
+        cta_t = banks.CTA[lang][phase][platform]
+        cta = fill(cta_t, ctx) or cta_t.split(":")[0]
         if platform == "tiktok":
-            return {"caption": f"{line}. {ask + ' ' if ask else ''}{cta}\n{tagstr}".strip()}
+            sep = " " if line.endswith(("?", "!")) else ". "
+            return {"caption": f"{line}{sep}{ask + ' ' if ask else ''}{cta}\n{tagstr}".strip()}
         if platform == "reels":
-            return {"caption": f"{line[0].upper() + line[1:]}.\n\n{(ask[0].upper() + ask[1:] + chr(10)) if ask else ''}{cta}\n\n{tagstr}"}
+            end = "" if line.endswith(("?", "!")) else "."
+            return {"caption": f"{line[0].upper() + line[1:]}{end}\n\n{(ask[0].upper() + ask[1:] + chr(10)) if ask else ''}{cta}\n\n{tagstr}"}
         title = f"{t['title']} - {cfg.get('artist', '')} ({line})"
         if len(title) > 90:
             title = f"{t['title']} - {cfg.get('artist', '')}"
-        return {"title": title + " #shorts",
-                "description": f"{t['title']} by {cfg.get('artist', '')}, from the album {cfg.get('album', '')}.\n{cta}\n{tagstr}"}
+        desc = (f"{t['title']} de {cfg.get('artist', '')}, del álbum {cfg.get('album', '')}." if lang == "es"
+                else f"{t['title']} by {cfg.get('artist', '')}, from the album {cfg.get('album', '')}.")
+        return {"title": title + " #shorts", "description": f"{desc}\n{cta}\n{tagstr}"}
 
     day = start
     day_i = 0
@@ -194,6 +212,7 @@ def build_plan(cfg, analyses, materials, perf=None, start=None, end=None, seed=7
         tw = track_weights(phase)
         for k in range(n):
             t = _wchoice(rng, tracks, tw)
+            lang = _wchoice(rng, list(langs), list(langs.values()))
             special = None
             if k == 0 and phase == "pre" and days_left in COUNTDOWN_DAYS:
                 special = "countdown"
@@ -208,7 +227,7 @@ def build_plan(cfg, analyses, materials, perf=None, start=None, end=None, seed=7
                     el2 = {kk: w * (0.4 if kk in yday_t else 1.0) for kk, w in el.items() if kk not in today_t}
                     el = el2 or el
                     template = _wchoice(rng, list(el), list(el.values()))
-                hook, kind = ("", "countdown") if template in ("countdown",) else pick_hook(t, day_i, day, phase, m, template)
+                hook, kind = ("", "countdown") if template in ("countdown",) else pick_hook(t, day_i, day, phase, m, template, lang)
                 key = (t["title"], round(m["start"], 1), round(m["end"], 1), template, hook)
                 if key not in used_keys:
                     break
@@ -216,14 +235,18 @@ def build_plan(cfg, analyses, materials, perf=None, start=None, end=None, seed=7
             template_recent[day_i].append(template)
             style = {"hook_style": _wchoice(rng, list(HOOK_STYLE_W), list(HOOK_STYLE_W.values())),
                      "font_set": rng.choice(FONT_SETS), "pulse_mode": rng.choice(["square", "square", "full"]),
-                     "lyric_bg": rng.choice(["cover", "photo"]) if materials.get("photos", 0) else "cover"}
+                     "lyric_bg": rng.choice(["cover", "photo"]) if materials.get("photos", 0) else "cover",
+                     "palette": rng.choice(label_pals) if rng.random() < palette_mix else "cover", "lang": lang}
             if template == "countdown":
-                style.update({"days": days_left, "when": f"OUT {release.strftime('%b %-d').upper()}"})
+                words = banks.CARD[lang]
+                short = banks.date_words(release, days_left, lang)[2]
+                style.update({"days": days_left, "when": words["out"].format(date=short),
+                              "unit": words["day"] if days_left == 1 else words["days"]})
             if template == "text_story":
-                lines = story_lines(t, day, phase)
+                lines = story_lines(t, day, phase, lang)
                 if not lines:
                     template = "vinyl"
-                    hook, kind = pick_hook(t, day_i, day, phase, m, template)
+                    hook, kind = pick_hook(t, day_i, day, phase, m, template, lang)
                 else:
                     style["lines"] = lines
                     hook, kind = "", "story"
@@ -233,7 +256,7 @@ def build_plan(cfg, analyses, materials, perf=None, start=None, end=None, seed=7
                     "hook": hook, "hook_kind": kind, "seed": rng.randrange(1 << 30), **style}
             items.append(item)
             posts.append({"day": day.isoformat(), "time": TIMES["tiktok"][k % len(TIMES["tiktok"])],
-                          "platform": "tiktok", "media": vid, **caption("tiktok", t, day, phase, kind)})
+                          "platform": "tiktok", "media": vid, **caption("tiktok", t, day, phase, kind, lang)})
         day += dt.timedelta(days=1)
         day_i += 1
 
@@ -251,12 +274,12 @@ def build_plan(cfg, analyses, materials, perf=None, start=None, end=None, seed=7
         for k, it in enumerate((y1 or today)[: rates["shorts"]]):
             t = by_title[it["track"]]
             posts.append({"day": day.isoformat(), "time": TIMES["shorts"][k % 4], "platform": "shorts",
-                          "media": it["id"], **caption("shorts", t, day, phase, it["hook_kind"])})
+                          "media": it["id"], **caption("shorts", t, day, phase, it["hook_kind"], it["lang"])})
         src = sorted(y2 or y1 or today, key=lambda x: ig_pref.index(x["template"]))
         for k, it in enumerate(src[: rates["reels"]]):
             t = by_title[it["track"]]
             posts.append({"day": day.isoformat(), "time": TIMES["reels"][k % 3], "platform": "reels",
-                          "media": it["id"], **caption("reels", t, day, phase, it["hook_kind"])})
+                          "media": it["id"], **caption("reels", t, day, phase, it["hook_kind"], it["lang"])})
         # stories: one card + today's videos
         for k in range(rates["stories"]):
             if k == 0:
@@ -267,11 +290,10 @@ def build_plan(cfg, analyses, materials, perf=None, start=None, end=None, seed=7
                 if not pick:
                     continue
                 media = pick["id"]
-                note = rng.choice(["Add a poll: replay or skip?", "Add a music/link sticker", "Add a question box: favorite lyric?",
-                                   "Add a slider emoji sticker"])
+                note = rng.choice(banks.STORY_NOTES["en"])
             posts.append({"day": day.isoformat(), "time": TIMES["stories"][k % 4], "platform": "stories",
                           "media": media, "caption": "", "note": note})
         day += dt.timedelta(days=1)
     posts.sort(key=lambda p: (p["day"], p["time"], p["platform"]))
     return {"items": items, "posts": posts, "release": release.isoformat(), "start": start.isoformat(),
-            "end": end.isoformat()}
+            "end": end.isoformat(), "card_lang": max(langs, key=langs.get)}

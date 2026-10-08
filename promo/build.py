@@ -15,6 +15,7 @@ import sys
 import time
 from pathlib import Path
 
+from . import banks
 from . import core as C
 from . import stills
 from .analyze import analyze
@@ -148,24 +149,29 @@ def cmd_render(pr: Project, args):
             continue
         t = by_title[it["track"]]
         L = lyr.get(t["title"], {})
+        ipal = pal if it.get("palette", "cover") == "cover" else C.label_palette(it["palette"])
         job = Job(out=out, audio=pr.track_file(t), t0=it["t0"], t1=it["t1"], analysis=an[t["title"]],
-                  cover=cover, pal=pal, template=it["template"], hook=it["hook"], title=t["title"],
+                  cover=cover, pal=ipal, template=it["template"], hook=it["hook"], title=t["title"],
                   artist=cfg.get("artist", ""), font_set=it["font_set"], hook_style=it["hook_style"],
-                  style={k: it[k] for k in ("days", "when", "lines", "pulse_mode", "lyric_bg") if k in it},
+                  style={k: it[k] for k in ("days", "when", "unit", "lines", "pulse_mode", "lyric_bg") if k in it},
                   photos=photos, clips=clips, lyrics=L.get("synced") or L.get("lines", []), seed=it["seed"])
         print(f"[{n}/{len(todo)}] ", end="")
         render(job)
         C.thumbnail(out, media / f"{it['id']}.jpg", t=min(1.5, (it["t1"] - it["t0"]) / 3))
     # story cards
     release = dt.date.fromisoformat(plan["release"])
+    lang = plan.get("card_lang", "en")
+    lpal = C.label_palette("obsidian_gold")
     d = a
     while d <= b:
         days = (release - d).days
         name = f"card-{'countdown' if days > 0 else 'outnow'}-{d.isoformat()}.jpg"
         p = media / name
         if not p.exists() or args.force:
-            img = (stills.countdown_card(cover, pal, days, cfg["album"], cfg["artist"], release.strftime("%b %-d"))
-                   if days > 0 else stills.outnow_card(cover, pal, cfg["album"], cfg["artist"]))
+            cpal = lpal if (d.toordinal() % 2 and cfg.get("palette_mix", 0)) else pal
+            date_str = banks.date_words(release, days, lang)[1]
+            img = (stills.countdown_card(cover, cpal, days, cfg["album"], cfg["artist"], date_str, lang=lang)
+                   if days > 0 else stills.outnow_card(cover, cpal, cfg["album"], cfg["artist"], lang=lang))
             stills.save(img, p)
         d += dt.timedelta(days=1)
 
