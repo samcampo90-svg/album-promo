@@ -1,0 +1,1 @@
+These fonts are from Google Fonts (via the @expo-google-fonts npm packages) and are licensed under the SIL Open Font License 1.1: Anton, Archivo Black, Bebas Neue, DM Serif Display, Inter, Permanent Marker, Playfair Display, Space Grotesk, Space Mono, Syne.
