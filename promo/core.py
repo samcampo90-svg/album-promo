@@ -132,6 +132,16 @@ def cover_fit(img, w, h):
     return r[y0:y0 + h, x0:x0 + w].copy()
 
 
+def cover_fit_focus(img, w, h, fx=0.5, fy=0.5, zoom=1.0):
+    """scale+crop to w x h, keeping the focus point (0..1) in frame; zoom>1 crops tighter"""
+    ih, iw = img.shape[:2]
+    f = max(w / iw, h / ih) * zoom
+    r = cv2.resize(img, (int(np.ceil(iw * f)), int(np.ceil(ih * f))), interpolation=cv2.INTER_AREA if f < 1 else cv2.INTER_LINEAR)
+    x0 = int(np.clip(fx * r.shape[1] - w / 2, 0, r.shape[1] - w))
+    y0 = int(np.clip(fy * r.shape[0] - h / 2, 0, r.shape[0] - h))
+    return r[y0:y0 + h, x0:x0 + w].copy()
+
+
 def blurred_bg(img, w=W, h=H, scale=1.12, blur=60, dim=0.55, sat=1.15, vig=0.55):
     """oversized blurred background (vignette baked in) so it can drift/zoom by cropping"""
     bw, bh = int(w * scale), int(h * scale)

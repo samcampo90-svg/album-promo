@@ -29,6 +29,7 @@ class Job:
     style: dict = field(default_factory=dict)
     photos: list = field(default_factory=list)   # list of BGR images
     clips: list = field(default_factory=list)    # list of video paths
+    footage: list = field(default_factory=list)  # curated phone media from promo.footage (dicts)
     lyrics: list = field(default_factory=list)   # [(abs_time, line), ...] synced, or [] / [lines] unsynced
     seed: int = 0
 
@@ -433,10 +434,81 @@ def text_story(job, f):
         yield ov(frame, i, LABEL_Y + 70, hook=False)
 
 
+# ---------------------------------------------------------------- 11. dump (phone footage montage)
+_PHOTO_CACHE = {}
+
+
+def _photo(path):
+    if path not in _PHOTO_CACHE:
+        if len(_PHOTO_CACHE) > 40:
+            _PHOTO_CACHE.clear()
+        _PHOTO_CACHE[path] = cv2.imread(path)
+    return _PHOTO_CACHE[path]
+
+
+def dump(job, f):
+    """Photo-dump style montage of curated phone photos and video moments, cut on the beat."""
+    pool = []
+    for it in job.footage:
+        if it.get("kind") == "photo":
+            pool.append(("photo", it, None))
+        elif it.get("kind") == "video":
+            for s in (it.get("segments") or [])[:2]:
+                pool.append(("video", it, s))
+    if not pool:
+        yield from photo_beats(job, f)
+        return
+    rng = np.random.default_rng(job.seed)
+    w = np.array([0.5 + (it.get("quality") or 0.5) for _, it, _ in pool])
+    order = list(rng.choice(len(pool), size=len(pool), replace=False, p=w / w.sum()))
+    tempo = job.analysis.get("tempo", 100)
+    beats_per_cut = 2 if tempo < 105 else 4
+    # cut points: every N beats from the clip's beat list (fallback 0.9 s)
+    bt = [b for b in f.beats if b >= 0] or list(np.arange(0, f.dur, 0.9))
+    cuts = [0.0] + [bt[k] for k in range(beats_per_cut, len(bt), beats_per_cut) if bt[k] < f.dur - 0.4]
+    luts = _lut(job.pal)
+    ov = overlays(job)
+    readers = {}
+    seg_i, cur, cur_start, frame_src, acc = -1, None, 0, None, 0.0
+    for i in range(f.n):
+        t = i / FPS
+        k = int(np.searchsorted(cuts, t, side="right")) - 1
+        if k != seg_i:
+            seg_i = k
+            kind, it, s = pool[order[k % len(order)]]
+            cur, cur_start = (kind, it, s), i
+            if kind == "video":
+                rd = readers.get(it["path"]) or readers.setdefault(it["path"], _ClipReader(it["path"]))
+                rd.seek(int(s["t0"] * rd.fps))
+                frame_src, acc = rd.read(), 0.0
+            else:
+                frame_src = _photo(it["path"])
+        kind, it, s = cur
+        age = i - cur_start
+        fx, fy = it.get("focus") or (0.5, 0.5)
+        if kind == "video":
+            rd = readers[it["path"]]
+            acc += rd.fps / FPS
+            while acc >= 1:
+                nxt = rd.read()
+                if nxt is not None:
+                    frame_src = nxt
+                acc -= 1
+            frame = C.cover_fit_focus(frame_src, W, H, fx, fy)
+        else:
+            frame = C.cover_fit_focus(frame_src, W, H, fx, fy, zoom=1.0 + 0.06 * age / FPS)
+        frame = cv2.merge([cv2.LUT(frame[..., c], luts[c]) for c in range(3)])
+        if age < 3 and seg_i > 0:
+            fl = 1 - age / 3
+            frame = cv2.addWeighted(frame, 1 - 0.45 * fl, np.full_like(frame, 255), 0.45 * fl, 0)
+        frame = C.grain(frame, i, 4)
+        yield ov(frame, i, LABEL_Y + 60)
+
+
 TEMPLATES = {
     "vinyl": vinyl, "bars": bars, "ring": ring, "pulse": pulse, "lyric": lyric,
     "photo_beats": photo_beats, "clip_cut": clip_cut, "waveform": waveform,
-    "countdown": countdown, "text_story": text_story,
+    "countdown": countdown, "text_story": text_story, "dump": dump,
 }
 
 

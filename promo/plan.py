@@ -13,7 +13,7 @@ REQUIRES = {"independent artist": "independent", "no label": "independent", "alm
             "sin disquera": "independent", "casi no saco": "almost_didnt"}
 LABEL_PALETTES = ["obsidian_gold", "blood_gold", "silver_rite", "olive_reliquary", "ash_crimson"]
 TEMPLATE_W = {"vinyl": 1.0, "bars": 1.0, "ring": 0.9, "pulse": 1.0, "lyric": 1.6, "photo_beats": 1.2,
-              "clip_cut": 1.8, "waveform": 0.9, "text_story": 0.8}
+              "clip_cut": 1.8, "waveform": 0.9, "text_story": 0.8, "dump": 2.0}
 HOOK_STYLE_W = {"line_boxes": 0.35, "box_black": 0.2, "stroke": 0.2, "shadow": 0.15, "accent": 0.1}
 FONT_SETS = ["native", "condensed", "bebas", "serif", "dmserif", "grotesk", "mono", "marker", "syne", "archivo"]
 TIMES = {"tiktok": ["11:00", "15:00", "19:00", "21:30", "13:00", "17:00"], "shorts": ["12:00", "17:30", "20:30", "14:00"],
@@ -133,6 +133,8 @@ def build_plan(cfg, analyses, materials, perf=None, start=None, end=None, seed=7
             if k == "photo_beats" and materials.get("photos", 0) < 2:
                 continue
             if k == "clip_cut" and materials.get("clips", 0) < 1:
+                continue
+            if k == "dump" and materials.get("footage", 0) < 4:
                 continue
             if k == "lyric" and lyr.get("synced"):
                 w *= 1.3
@@ -264,7 +266,7 @@ def build_plan(cfg, analyses, materials, perf=None, start=None, end=None, seed=7
     by_day = defaultdict(list)
     for it in items:
         by_day[it["day"]].append(it)
-    ig_pref = ["clip_cut", "photo_beats", "lyric", "pulse", "text_story", "vinyl", "ring", "bars", "waveform", "countdown"]
+    ig_pref = ["dump", "clip_cut", "photo_beats", "lyric", "pulse", "text_story", "vinyl", "ring", "bars", "waveform", "countdown"]
     day = start
     while day <= end:
         phase = phase_of(day, release)

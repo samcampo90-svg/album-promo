@@ -60,6 +60,13 @@ class Project:
         d = self.root / "clips"
         return sorted(p for p in d.glob("*") if p.suffix.lower() in VID) if d.exists() else []
 
+    def footage(self):
+        """usable items from promo.footage's index (curated phone photos/videos)"""
+        p = self.work / "footage" / "index.json"
+        if not p.exists():
+            return []
+        return [x for x in json.loads(p.read_text())["items"] if x.get("use")]
+
     def lyrics(self):
         out = {}
         d = self.root / "lyrics"
@@ -107,7 +114,10 @@ class Project:
 def cmd_plan(pr: Project, args):
     an = pr.analyses()
     lyr = pr.lyrics()
-    mats = {"photos": len(pr.photos()), "clips": len(pr.clips()), "lyrics": lyr}
+    fx = pr.footage()
+    mats = {"photos": len(pr.photos()) or sum(1 for x in fx if x["kind"] == "photo"),
+            "clips": len(pr.clips()) or sum(1 for x in fx if x["kind"] == "video"),
+            "footage": len(fx), "lyrics": lyr}
     perf_p = pr.root / "performance.json"
     perf = json.loads(perf_p.read_text()) if perf_p.exists() else None
     plan = build_plan(pr.cfg, an, mats, perf=perf, seed=args.seed)
@@ -136,6 +146,11 @@ def cmd_render(pr: Project, args):
     pal = C.palette(cover)
     photos = [C.load_image(p, 2200) for p in pr.photos()]
     clips = pr.clips()
+    footage = pr.footage()
+    if not photos:
+        photos = [C.load_image(Path(x["path"]), 2200) for x in footage if x["kind"] == "photo"][:24]
+    if not clips:
+        clips = [Path(x["path"]) for x in footage if x["kind"] == "video"]
     lyr = pr.lyrics()
     cfg = pr.cfg
     by_title = {t["title"]: t for t in cfg["tracks"]}
@@ -154,7 +169,7 @@ def cmd_render(pr: Project, args):
                   cover=cover, pal=ipal, template=it["template"], hook=it["hook"], title=t["title"],
                   artist=cfg.get("artist", ""), font_set=it["font_set"], hook_style=it["hook_style"],
                   style={k: it[k] for k in ("days", "when", "unit", "lines", "pulse_mode", "lyric_bg") if k in it},
-                  photos=photos, clips=clips, lyrics=L.get("synced") or L.get("lines", []), seed=it["seed"])
+                  photos=photos, clips=clips, footage=footage, lyrics=L.get("synced") or L.get("lines", []), seed=it["seed"])
         print(f"[{n}/{len(todo)}] ", end="")
         render(job)
         C.thumbnail(out, media / f"{it['id']}.jpg", t=min(1.5, (it["t1"] - it["t0"]) / 3))
