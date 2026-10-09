@@ -72,10 +72,24 @@ class Project:
         d = self.root / "lyrics"
         for t in self.cfg["tracks"]:
             entry = {"lines": [], "synced": []}
-            for cand in [t.get("lyrics"), Path(t["file"]).stem + ".txt", Path(t["file"]).stem + ".lrc"]:
+            for cand in [t.get("lyrics"), Path(t["file"]).stem + ".srt", Path(t["file"]).stem + ".txt",
+                         Path(t["file"]).stem + ".lrc"]:
                 if not cand or not (d / cand).exists():
                     continue
                 txt = (d / cand).read_text(errors="ignore")
+                if cand.lower().endswith(".srt"):
+                    # SRT from the Lyric SRT Maker: "00:01:02,500 --> 00:01:05,000" then the line
+                    for block in re.split(r"\n\s*\n", txt.replace("\r", "")):
+                        m = re.search(r"(\d+):(\d+):(\d+)[,.](\d+)\s*-->", block)
+                        lines = [l.strip() for l in block.split("\n") if l.strip() and "-->" not in l
+                                 and not l.strip().isdigit()]
+                        if m and lines:
+                            t0 = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3)) + int(m.group(4)) / 1000
+                            entry["synced"].append((t0, " ".join(lines)))
+                            entry["lines"].append(" ".join(lines))
+                    if entry["synced"]:
+                        break
+                    continue
                 for raw in txt.splitlines():
                     m = re.match(r"\[(\d+):(\d+(?:\.\d+)?)\]\s*(.*)", raw.strip())
                     if m:
