@@ -1,0 +1,15 @@
+# media and per-project data never go in this public repo
+input/
+work/
+out/
+*/_work/
+*/_out/
+*.wav
+*.aif
+*.aiff
+*.flac
+*.mp3
+*.m4a
+*.mp4
+*.mov
+__pycache__/
